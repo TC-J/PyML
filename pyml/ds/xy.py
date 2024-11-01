@@ -13,6 +13,7 @@ import pandas as pd
 
 class XYDataset(Dataset):
     """
+        Create a dataset based on a function of `x`; a single feature and target.
     """
     def __init__(
         self, 
@@ -20,6 +21,12 @@ class XYDataset(Dataset):
         domain: list[tuple[int, int] | int],   # the domain, or subdomains, over an assumed field of real or floats.
         dtype: DTypeLike = np.float32
     ) -> None:
+        """
+            Pass a function to create the targets from the domain of `x` values.
+
+            The domain is a tuple, or a list of tuples, representing the subdomains 
+            included in the domain.
+        """
         self.__dtype = dtype
 
         self.__fn = fn
@@ -58,56 +65,3 @@ class XYDataset(Dataset):
         y = self.__fn(x)
         
         return torch.Tensor([x]), torch.Tensor([y])
-
-
-def xy_gen_data(
-    fn = lambda x: 2*x,
-    domain = (-500, 500),
-    dtype = np.float32
-) -> pd.DataFrame:
-    X = np.arange(
-        start=domain[0], 
-        stop=domain[1] + 1, 
-        dtype=dtype
-    )
-
-    y = fn(X)
-
-    return pd.DataFrame(data=np.c_[X, y], columns=["x", "y"])
-
-
-def xy_gen_dl(
-    fn = lambda x: 2*x,
-    train_domain = [(-499, -200), (-99, 99), (200, 499)],
-    test_domain = [(-199, -100), (100, 199)],
-    xscale = None,
-    yscale = None,
-    shuffle: tuple[bool, bool] = (True, True),
-    batch_size: tuple[int, int] = (256, 256),
-    dtype = np.float32,
-):
-    return (
-        DataLoader(
-            dataset = XYDataset(
-                fn = fn,
-                domain = train_domain,
-                dtype = dtype,
-                xscale = xscale,
-                yscale = yscale
-            ),
-            shuffle = shuffle[0],
-            batch_size = batch_size[0]
-        ),
-
-        DataLoader(
-            dataset = XYDataset(
-                fn = fn,
-                domain = test_domain,
-                dtype = dtype,
-                xscale = xscale,
-                yscale = yscale
-            ),
-            shuffle = shuffle[1],
-            batch_size = batch_size[1]
-        )
-    )

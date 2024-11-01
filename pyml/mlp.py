@@ -22,12 +22,6 @@ class MLP(Module):
         function.
         
         Optionally, with dropout- and/or threshold- training-layers.
-
-        ### Arguments
-        @D_in
-
-        ### Example
-
     """
     def __init__(
         self,
@@ -40,6 +34,9 @@ class MLP(Module):
         thresholds: list[tuple[float|float]|None] | tuple[float|float] | None = None,
         dtype: dtype = torch.float32
     ):
+        """
+             
+        """
         super().__init__()
 
         self.dtype = dtype

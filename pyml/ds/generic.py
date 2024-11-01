@@ -90,7 +90,7 @@ class GenericDataset(Dataset):
 
             # iterate and apply the feature-transforms.
             for feat_transform in self._feat_transforms:
-                # if the transforms are in tuples, apply them to the feature's individual columns.
+                # if the transforms are in tuples, apply them to the features' individual columns.
                 if isinstance(feat_transform, tuple):
                     for i, _feat_transform in enumerate(feat_transform):
                         f[i] = _feat_transform(f[i])
@@ -100,7 +100,7 @@ class GenericDataset(Dataset):
             
             # iterate and apply the target-transforms.
             for targ_transform in self._targ_transforms:
-                # if the transforms are in tuples, apply them to the target's individual columns.
+                # if the transforms are in tuples, apply them to the targets' individual columns.
                 if isinstance(targ_transform, tuple):
                     for i, _targ_transform in enumerate(targ_transform):
                         t[i] = _targ_transform(t[i])
@@ -125,6 +125,7 @@ def generic_split_dataset(
     """
     F, T = [], []
 
+    # iterate over the dataset and put the features and targets in separate lists.
     for i in range(len(dataset)):
         f, t = dataset[i]
 
@@ -132,8 +133,10 @@ def generic_split_dataset(
 
         T.append(t)
     
+    # use scikit-learn's train_test_split.
     F_train, T_train, F_test, T_test = train_test_split(F, T, test_split, **kwargs)
 
+    # create and return the training- and testing- generic-datasets.
     return (
         GenericDataset(
             data=np.c_[np.asarray(F_train), np.asarray(T_train)],

@@ -14,6 +14,7 @@ from pandas import DataFrame
 from pyml.mlp import MLP
 
 
+#TODO: hm; maybe.
 class SupervisionResults(DataFrame):
     def __init__(
         self,
@@ -229,16 +230,18 @@ def hypervise_mlp(
     **optim_kwargs
 ) -> tuple[MLP, DataFrame]:
     """
-        This creates a multi-layer-perceptron `MLP` and supervises it based
-        on a dataset.
+        This creates a multi-layer-perceptron `MLP` and supervises it based-on 
+        a dataset.
 
-        See `supervise`; this function only adds arguments for creating the
-        `MLP` model.
+        See `supervise`; this function only adds arguments for creating an
+        `MLP` model (a multi-layer-perceptron neural-net).
 
-        This will return the trained-model and the results of the supervision.
+        This will return the trained-model and the results of the supervision in a dataframe.
     """
+    # get the feature and target dimensions using the first sample from the dataset, snarl.
     tmp_xy = train_dataset[0]
 
+    # create the model.
     model = MLP(
         D_in=tmp_xy[0].shape[-1],
         D_out=tmp_xy[1].shape[-1],
@@ -250,6 +253,7 @@ def hypervise_mlp(
         dtype=dtype
     )
 
+    # supervise the model.
     results = supervise(
         model=model,
         train_dataset=train_dataset,
