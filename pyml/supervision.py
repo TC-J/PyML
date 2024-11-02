@@ -171,7 +171,6 @@ def supervise(
                 test_interval_loss += test_loss
 
         if epoch % interval == 0:
-
             losses.append([
                 epoch,
                 interval_loss / interval if epoch != 0 else interval_loss,
@@ -189,9 +188,7 @@ def supervise(
                 test_interval_loss = 0.
         
     return DataFrame(
-        data=np.c_[
-            asarray(losses)
-        ],
+        data=asarray(losses),
         columns=[
             "EPOCH", 
             "interval-loss", 
@@ -213,7 +210,7 @@ def supervise(
 
 
 def hypervise_mlp(
-    loss_fn_cls: Callable[[Predictions, Targets], Loss],
+    loss_fn_cls: Callable[[Any], Callable[[Predictions, Targets], Loss]],
     optim_cls: Callable[[Any], Optimizer],
     train_dataset: Dataset,
     test_dataset: Dataset | None = None,
@@ -236,12 +233,12 @@ def hypervise_mlp(
         This will return the trained-model and the results of the supervision in a dataframe.
     """
     # for the shapes to determine D_in and D_out.
-    tmpx, tmpy = train_dataset[0]
+    sample_x, sample_y = train_dataset[0]
 
     # create the model.
     model = MLP(
-        D_in=len(tmpx) if len(list(tmpx)) < 2 else tmpx.shape[-1],
-        D_out=len(tmpy) if len(list(tmpy)) < 2 else tmpy.shape[-1],
+        D_in=len(sample_x) if len(list(sample_x)) < 2 else sample_x.shape[-1],
+        D_out=len(sample_y) if len(list(sample_y)) < 2 else sample_y.shape[-1],
         H=H,
         Hn=Hn,
         activation=activation,
@@ -263,3 +260,77 @@ def hypervise_mlp(
     )
 
     return model, results
+
+
+def hypergrid_mlp(
+    loss_fn_cls_array: list,
+    optim_cls_array: list,
+    train_dataset: Dataset,
+    test_dataset: Dataset,
+    H_array: list[int],
+    Hn_array: list[int],
+    activation_array: list[Callable],
+    dropouts_array: list,
+    thresholds_array: list,
+    epochs_array: list,
+    interval: int|float,
+    hyperparams_array: list[dict]
+) -> tuple[list, list, list]:
+    """
+        Use an array of parameters for each of the relevant parameters to `hypervise_mlp`
+        and run every combination of parameters in the `hypervise_mlp` function.
+
+        Returns an array of the resulting models, loss-dataframes, and a dictionary
+        containing the in-order indices within each of parameters' arrays at that
+        given `hypervise_mlp`'s call-index. mouthful
+    """
+    hypergrid_desc_array = []
+
+    models_array = []
+
+    results_array = []
+
+    for lfc_idx, loss_fn_cls in enumerate(loss_fn_cls_array):
+        for oc_idx, optim_cls in enumerate(optim_cls_array):
+            for H_idx, H in enumerate(H_array):
+                for Hn_idx, Hn in enumerate(Hn_array):
+                    for act_idx, activation in enumerate(activation_array):
+                        for do_idx, dropouts in enumerate(dropouts_array):
+                            for th_idx, thresholds in enumerate(thresholds_array):
+                                for ep_idx, epochs in enumerate(epochs_array):
+                                    for hp_idx, hyperparams in enumerate(hyperparams_array):
+                                        model, results = hypervise_mlp(
+                                            loss_fn_cls=loss_fn_cls,
+                                            optim_cls=optim_cls,
+                                            train_dataset=train_dataset,
+                                            test_dataset=test_dataset,
+                                            H=H,
+                                            Hn=Hn,
+                                            activation=activation,
+                                            dropouts=dropouts,
+                                            epochs=epochs,
+                                            interval=interval,
+                                            **hyperparams
+                                        )
+
+                                        hypergrid_desc = {
+                                            "loss_fn_cls_idx": lfc_idx,
+                                            "optim_cls_idx": oc_idx,
+                                            "H_idx": H_idx,
+                                            "Hn_idx": Hn_idx,
+                                            "activation_idx": act_idx,
+                                            "dropouts_idx": do_idx,
+                                            "thresholds_idx": th_idx,
+                                            "epochs_idx": ep_idx,
+                                            "hyperparams_idx": hp_idx
+                                        }
+
+                                        hypergrid_desc_array.append(hypergrid_desc)
+
+                                        models_array.append(model)
+
+                                        results_array.append(results)
+
+    return models_array, results_array, hypergrid_desc_array
+
+                                        
