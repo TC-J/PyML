@@ -8,21 +8,30 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from numpy import asarray, ndarray
 
+import pandas as pd
 from pandas import DataFrame
 
 from pyml.mlp import MLP
 from pyml.util import *
 
-
-#TODO: hm; maybe.
-class SupervisionResults(DataFrame):
+class SupervisedResult(object):
+    """
+        Losses from a supervision.
+    """
     def __init__(
         self,
-        *args,
-        **kwargs
+        dataframe: DataFrame
     ):
-        super().__init__(*args, **kwargs)
+        self.dataframe = dataframe
+    
 
+    def __getitem__(self, key) -> Any:
+        return self.dataframe.__getitem__(key)
+
+    
+    def __getattr__(self, name) -> Any:
+        return object.__getattribute__(self.dataframe, name)
+    
 
 Predictions: TypeAlias = Tensor
 
@@ -97,7 +106,7 @@ def supervise(
     epochs: int | None = 50,
     interval: int | float = 0.1,
     **hyperparams
-) -> DataFrame:
+) -> SupervisedResult:
     """
         Supervise a model on a dataset, given a loss-function and optimizer,
         trained for a number of epochs.
@@ -186,8 +195,8 @@ def supervise(
                 ])
 
                 test_interval_loss = 0.
-        
-    return DataFrame(
+    
+    return SupervisedResult(dataframe=DataFrame(
         data=asarray(losses),
         columns=[
             "EPOCH", 
@@ -206,7 +215,7 @@ def supervise(
             "interval-loss-test",
             "loss-test"
         ],
-    ).rename_axis("INTERVAL")
+    ).rename_axis("INTERVAL"))
 
 
 def hypervise_mlp(
@@ -262,6 +271,23 @@ def hypervise_mlp(
     return model, results
 
 
+class HypergridResult(object):
+    """
+        Results from a hypergrid supervision.
+    """
+    def __init__(
+        self,
+        models: list[Module],
+        results: list[SupervisedResult],
+        hypergrid_descs: list[dict]
+    ):
+        self.models = models
+
+        self.results = results
+        
+        self.hypergrid_descs = hypergrid_descs
+    
+
 def hypergrid_mlp(
     loss_fn_cls_array: list,
     optim_cls_array: list,
@@ -314,15 +340,15 @@ def hypergrid_mlp(
                                         )
 
                                         hypergrid_desc = {
-                                            "loss_fn_cls_idx": lfc_idx,
-                                            "optim_cls_idx": oc_idx,
-                                            "H_idx": H_idx,
-                                            "Hn_idx": Hn_idx,
-                                            "activation_idx": act_idx,
-                                            "dropouts_idx": do_idx,
-                                            "thresholds_idx": th_idx,
-                                            "epochs_idx": ep_idx,
-                                            "hyperparams_idx": hp_idx
+                                            "loss_fn_cls_index": lfc_idx,
+                                            "optim_cls_index": oc_idx,
+                                            "H_index": H_idx,
+                                            "Hn_index": Hn_idx,
+                                            "activation_index": act_idx,
+                                            "dropouts_index": do_idx,
+                                            "thresholds_index": th_idx,
+                                            "epochs_index": ep_idx,
+                                            "hyperparams_index": hp_idx
                                         }
 
                                         hypergrid_desc_array.append(hypergrid_desc)
@@ -331,6 +357,10 @@ def hypergrid_mlp(
 
                                         results_array.append(results)
 
-    return models_array, results_array, hypergrid_desc_array
+    return HypergridResult(
+        models=models_array,
+        results=results_array,
+        hypergrid_descs=hypergrid_desc_array
+    )
 
                                         
