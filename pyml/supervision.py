@@ -14,15 +14,24 @@ from pandas import DataFrame
 from pyml.mlp import MLP
 from pyml.util import *
 
+from time import time
+
 class SupervisedResult(object):
     """
-        Losses from a supervision.
+        Result from a supervision.
     """
     def __init__(
         self,
-        dataframe: DataFrame
+        dataframe: DataFrame,
+        elapsed: float
     ):
         self.dataframe = dataframe
+
+        self.elapsed = elapsed
+    
+    
+    def __str__(self):
+        return str(self.dataframe) + f"\nelapsed: {self.elapsed}"
     
 
     def __getitem__(self, key) -> Any:
@@ -165,6 +174,8 @@ def supervise(
     # running interval loss for the test-data
     test_interval_loss = 0.
 
+    time_initial = time()
+
     for epoch in range(epochs+1):
         model.train()
 
@@ -195,6 +206,8 @@ def supervise(
                 ])
 
                 test_interval_loss = 0.
+
+    time_final = time()
     
     return SupervisedResult(dataframe=DataFrame(
         data=asarray(losses),
@@ -215,7 +228,7 @@ def supervise(
             "interval-loss-test",
             "loss-test"
         ],
-    ).rename_axis("INTERVAL"))
+    ).rename_axis("INTERVAL"), elapsed=time_final - time_initial)
 
 
 def hypervise_mlp(
