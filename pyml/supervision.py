@@ -1,6 +1,5 @@
 from typing import Any, Callable, Dict, TypeAlias
 
-import pandas
 import torch
 from torch import  Tensor, dtype
 from torch.nn import Module
@@ -12,6 +11,7 @@ from numpy import asarray, ndarray
 from pandas import DataFrame
 
 from pyml.mlp import MLP
+from pyml.util import *
 
 
 #TODO: hm; maybe.
@@ -89,17 +89,14 @@ def model_train(
 
 
 def supervise(
-    model: Module,
-    loss_fn: Callable[[Predictions, Targets], Loss],
+    loss_fn_cls: Callable[[Any], Callable[[Predictions, Targets], Loss]],
     optim_cls: Callable[[Any], Optimizer],
+    model: Module,
     train_dataset: Dataset,
     test_dataset: Dataset | None = None,
-    lr: float = 1e-3,
     epochs: int | None = 50,
-    batch_size: int = 256,
-    shuffle: bool = True,
-    track_interval: int | float = 0.1,
-    **optim_kwargs
+    interval: int | float = 0.1,
+    **hyperparams
 ) -> DataFrame:
     """
         Supervise a model on a dataset, given a loss-function and optimizer,
@@ -113,34 +110,51 @@ def supervise(
         Optionally, a test-dataset can be provided; the results of which will
         be included in the returned `DataFrame` based on the same track-interval.
 
-        The extra keyword-arguments, at the end, will be assumed to be the 
-        optimizer's instantiation keyword-arguments.
+        The keyword-arguments at the end are the kwargs--hyperparams--to the `DataLoader`,
+        and both the loss-class and optimizer-class constructors; eg, lr, batch_size, shuffle,
+        weight-decay; the constructors' parameters are each queried and matched in
+        the **kwargs (called **hyperparams in this case)--kwarg name collisions aren't 
+        dealt with, yet.
     """
-    optim = optim_cls(model.parameters(), lr=lr, **optim_kwargs)
+    # get the kwargs for each of the loss, optim, and dataloader's constructor signature and apply them each in their instatiation.
+
+    # loss kwargs from hyperparams
+    loss_fn_kwargs = get_fn_sig_kwargs(loss_fn_cls.__init__, hyperparams)
+
+    loss_fn = loss_fn_cls(**loss_fn_kwargs)
+
+    # optim kwargs from hyperparams
+    optim_kwargs = get_fn_sig_kwargs(optim_cls.__init__, hyperparams)
+
+    optim = optim_cls(model.parameters(), **optim_kwargs)
+
+    # loader kwargs from hyperparams
+    loader_kwargs = get_fn_sig_kwargs(DataLoader.__init__, hyperparams)
 
     loader = DataLoader(
         dataset = train_dataset,
-        shuffle = shuffle,
-        batch_size = batch_size
+        **loader_kwargs
     )
 
     test_loader = DataLoader(
         dataset = test_dataset,
-        shuffle = shuffle,
-        batch_size = batch_size
+        **loader_kwargs
     ) if test_dataset else None
 
+    # if interval is a fraction, take the fraction of the total epochs as the interval; otherwise, keep the integer number of epochs as the interval.
+    interval = interval if isinstance(interval, int) else int(epochs * interval)
+
+    # will contain the loss from the last epoch in the interval--last batch if applicable.
     losses = []
 
-    test_losses = []
-
-    interval = track_interval if isinstance(track_interval, int) else int(epochs * track_interval)
-
+    # will keep a running loss to be averaged each interval.
     interval_loss = 0.
 
-    test_interval_loss = 0.
+    # last epoch loss for the test-data.
+    test_losses = []
 
-    e = []
+    # running interval loss for the test-data
+    test_interval_loss = 0.
 
     for epoch in range(epochs+1):
         model.train()
@@ -157,9 +171,9 @@ def supervise(
                 test_interval_loss += test_loss
 
         if epoch % interval == 0:
-            e.append(epoch)
 
             losses.append([
+                epoch,
                 interval_loss / interval if epoch != 0 else interval_loss,
                 loss
             ])
@@ -176,47 +190,41 @@ def supervise(
         
     return DataFrame(
         data=np.c_[
-            asarray(e), 
             asarray(losses)
         ],
         columns=[
-            "epoch", 
-            "interval_loss", 
+            "EPOCH", 
+            "interval-loss", 
             "loss",
         ],
-    ).rename_axis("interval") if not test_losses else DataFrame(
+    ).rename_axis(f"INTERVAL") if not test_losses else DataFrame(
         data=np.c_[
-            asarray(e), 
             asarray(losses), 
             asarray(test_losses)
         ],
         columns=[
-            "epoch",
-            "interval_loss",
+            "EPOCH",
+            "interval-loss",
             "loss",
-            "test_interval_loss",
-            "test_loss"
+            "interval-loss-test",
+            "loss-test"
         ],
-    ).rename_axis("interval")
+    ).rename_axis("INTERVAL")
 
 
 def hypervise_mlp(
-    loss_fn: Callable[[Predictions, Targets], Loss],
+    loss_fn_cls: Callable[[Predictions, Targets], Loss],
     optim_cls: Callable[[Any], Optimizer],
     train_dataset: Dataset,
+    test_dataset: Dataset | None = None,
     Hn: int = 2,
     H: int | None = 10,
     activation: Callable = torch.nn.ReLU(),
     dropouts: list[float|None] | float | None = None,
     thresholds: list | None = None,
-    dtype: dtype = torch.float32,
-    test_dataset: Dataset | None = None,
-    lr: float = 0.2,
     epochs: int = 100,
-    batch_size: int = 256,
-    shuffle: bool = True,
-    track_interval: int|float = 0.1,
-    **optim_kwargs
+    interval: int|float = 0.1,
+    **hyperparams
 ) -> tuple[MLP, DataFrame]:
     """
         This creates a multi-layer-perceptron `MLP` and supervises it based-on 
@@ -239,22 +247,19 @@ def hypervise_mlp(
         activation=activation,
         dropouts=dropouts,
         thresholds=thresholds,
-        dtype=dtype
+        dtype=torch.float32
     )
 
     # supervise the model.
     results = supervise(
         model=model,
+        loss_fn_cls=loss_fn_cls,
+        optim_cls=optim_cls,
         train_dataset=train_dataset,
         test_dataset=test_dataset,
-        loss_fn=loss_fn,
-        optim_cls=optim_cls,
-        lr=lr,
         epochs=epochs,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        track_interval=track_interval,
-        **optim_kwargs
+        interval=interval,
+        **hyperparams
     )
 
     return model, results
