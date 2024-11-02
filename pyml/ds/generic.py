@@ -69,6 +69,15 @@ class GenericDataset(Dataset):
             self._F: torch.Tensor | np.ndarray = data[:, :d_feature]
 
             self._T: torch.Tensor | np.ndarray[Any, Any] = data[:, -d_target]
+        
+        # ensure the arrays are the same shape.
+        # first the features.
+        if len(list(self._F.shape)) < 2:
+            self._F = self._F.unsqueeze(0) if isinstance(self._F, torch.Tensor) else self._F.reshape((-1, 1))
+
+        # then the targets.
+        if len(list(self._T.shape)) < 2:
+            self._T = self._T.unsqueeze(0) if isinstance(self._T, torch.Tensor) else self._T.reshape((-1, 1))
     
     
     def __len__(self) -> int:
@@ -86,7 +95,8 @@ class GenericDataset(Dataset):
         # do not track the gradient.
         with torch.no_grad():
             for transform in self._transforms:
-                f, t = transform(f), transform(t)
+                if transform:
+                    f, t = transform(f), transform(t)
 
             # iterate and apply the feature-transforms.
             for feat_transform in self._feat_transforms:
@@ -95,8 +105,8 @@ class GenericDataset(Dataset):
                     for i, _feat_transform in enumerate(feat_transform):
                         f[i] = _feat_transform(f[i])
                     # otherwise, apply the transform to the entire row.
-                    else:
-                        f = feat_transform(f)
+                elif feat_transform:
+                    f = feat_transform(f)
             
             # iterate and apply the target-transforms.
             for targ_transform in self._targ_transforms:
@@ -105,8 +115,8 @@ class GenericDataset(Dataset):
                     for i, _targ_transform in enumerate(targ_transform):
                         t[i] = _targ_transform(t[i])
                     # otherwise, apply the transform to the entire row.
-                    else:
-                        t = targ_transform(t)
+                elif targ_transform:
+                    t = targ_transform(t)
         return f, t
 
 
@@ -129,21 +139,27 @@ def generic_split_dataset(
     for i in range(len(dataset)):
         f, t = dataset[i]
 
+        f = f.detach().numpy() if isinstance(f, torch.Tensor) else np.asarray(f)
+
+        t = t.detach().numpy() if isinstance(t, torch.Tensor) else np.asarray(t)
+
         F.append(f)
 
         T.append(t)
     
     # use scikit-learn's train_test_split.
-    F_train, T_train, F_test, T_test = train_test_split(F, T, test_split, **kwargs)
+    F_train, F_test, T_train, T_test = train_test_split(F, T, test_size=test_split, **kwargs)
 
     # create and return the training- and testing- generic-datasets.
     return (
+        # train-dataset
         GenericDataset(
             data=np.c_[np.asarray(F_train), np.asarray(T_train)],
             transforms=transforms,
             feat_transforms=feat_transforms,
             targ_transforms=targ_transforms
         ),
+        # test-dataset
         GenericDataset(
             data=np.c_[np.asarray(F_test), np.asarray(T_test)],
             transforms=transforms,

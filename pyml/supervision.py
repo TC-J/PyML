@@ -93,11 +93,12 @@ def supervise(
     loss_fn: Callable[[Predictions, Targets], Loss],
     optim_cls: Callable[[Any], Optimizer],
     train_dataset: Dataset,
-    test_dataset: Dataset|None = None,
-    epochs: int = 50,
+    test_dataset: Dataset | None = None,
+    lr: float = 1e-3,
+    epochs: int | None = 50,
     batch_size: int = 256,
     shuffle: bool = True,
-    track_interval: int|float = 0.1,
+    track_interval: int | float = 0.1,
     **optim_kwargs
 ) -> DataFrame:
     """
@@ -115,7 +116,7 @@ def supervise(
         The extra keyword-arguments, at the end, will be assumed to be the 
         optimizer's instantiation keyword-arguments.
     """
-    optim = optim_cls(model.parameters(), **optim_kwargs)
+    optim = optim_cls(model.parameters(), lr=lr, **optim_kwargs)
 
     loader = DataLoader(
         dataset = train_dataset,
@@ -124,9 +125,9 @@ def supervise(
     )
 
     test_loader = DataLoader(
-        dataset=test_dataset,
-        shuffle=shuffle,
-        batch_size=batch_size
+        dataset = test_dataset,
+        shuffle = shuffle,
+        batch_size = batch_size
     ) if test_dataset else None
 
     losses = []
@@ -136,10 +137,6 @@ def supervise(
     interval = track_interval if isinstance(track_interval, int) else int(epochs * track_interval)
 
     interval_loss = 0.
-
-    running_loss = 0.
-
-    test_running_loss = 0.
 
     test_interval_loss = 0.
 
@@ -152,8 +149,6 @@ def supervise(
             loss = model_train(features, targets, model, loss_fn, optim)
 
             interval_loss += loss
-
-            running_loss += loss
         
         if test_loader:
             for features, targets in test_loader:
@@ -161,13 +156,10 @@ def supervise(
 
                 test_interval_loss += test_loss
 
-                test_running_loss += test_loss
-
         if epoch % interval == 0:
             e.append(epoch)
 
             losses.append([
-                running_loss / (epoch + 1), 
                 interval_loss / interval if epoch != 0 else interval_loss,
                 loss
             ])
@@ -176,7 +168,6 @@ def supervise(
 
             if test_loader:
                 test_losses.append([
-                    test_running_loss / (epoch + 1), 
                     test_interval_loss / interval if epoch != 0 else test_interval_loss, 
                     test_loss
                 ])
@@ -190,9 +181,8 @@ def supervise(
         ],
         columns=[
             "epoch", 
-            "running_loss",
             "interval_loss", 
-            "epoch_loss",
+            "loss",
         ],
     ).rename_axis("interval") if not test_losses else DataFrame(
         data=np.c_[
@@ -202,12 +192,10 @@ def supervise(
         ],
         columns=[
             "epoch",
-            "running_loss",
             "interval_loss",
-            "epoch_loss",
-            "test_running_loss",
+            "loss",
             "test_interval_loss",
-            "test_epoch_loss"
+            "test_loss"
         ],
     ).rename_axis("interval")
 
@@ -216,13 +204,14 @@ def hypervise_mlp(
     loss_fn: Callable[[Predictions, Targets], Loss],
     optim_cls: Callable[[Any], Optimizer],
     train_dataset: Dataset,
-    test_dataset: Dataset|None = None,
-    Hn: int=2,
-    H: int|None=10,
+    Hn: int = 2,
+    H: int | None = 10,
     activation: Callable = torch.nn.ReLU(),
-    dropouts: list[float|None] | float | None=None,
-    thresholds: list | None=None,
+    dropouts: list[float|None] | float | None = None,
+    thresholds: list | None = None,
     dtype: dtype = torch.float32,
+    test_dataset: Dataset | None = None,
+    lr: float = 0.2,
     epochs: int = 100,
     batch_size: int = 256,
     shuffle: bool = True,
@@ -238,13 +227,13 @@ def hypervise_mlp(
 
         This will return the trained-model and the results of the supervision in a dataframe.
     """
-    # get the feature and target dimensions using the first sample from the dataset, snarl.
-    tmp_xy = train_dataset[0]
+    # for the shapes to determine D_in and D_out.
+    tmpx, tmpy = train_dataset[0]
 
     # create the model.
     model = MLP(
-        D_in=tmp_xy[0].shape[-1],
-        D_out=tmp_xy[1].shape[-1],
+        D_in=len(tmpx) if len(list(tmpx)) < 2 else tmpx.shape[-1],
+        D_out=len(tmpy) if len(list(tmpy)) < 2 else tmpy.shape[-1],
         H=H,
         Hn=Hn,
         activation=activation,
@@ -260,6 +249,7 @@ def hypervise_mlp(
         test_dataset=test_dataset,
         loss_fn=loss_fn,
         optim_cls=optim_cls,
+        lr=lr,
         epochs=epochs,
         batch_size=batch_size,
         shuffle=shuffle,
